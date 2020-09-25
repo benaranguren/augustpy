@@ -8,6 +8,8 @@ class Lock:
     READ_CHARACTERISTIC         = btle.UUID("bd4ac612-0b45-11e3-8ffd-0800200c9a66")
     SECURE_WRITE_CHARACTERISTIC = btle.UUID("bd4ac613-0b45-11e3-8ffd-0800200c9a66")
     SECURE_READ_CHARACTERISTIC  = btle.UUID("bd4ac614-0b45-11e3-8ffd-0800200c9a66")
+    READ_CHAR1         = btle.UUID("bd4ac615-0b45-11e3-8ffd-0800200c9a66")
+    READ_CHAR2         = btle.UUID("bd4ac616-0b45-11e3-8ffd-0800200c9a66")
 
     def __init__(self, address, keyString, keyIndex):
         self.address = address
@@ -18,7 +20,6 @@ class Lock:
         self.peripheral = None
         self.session = None
         self.secure_session = None
-        self.command_service = None
         self.is_secure = False
 
     def set_name(self, name):
@@ -32,9 +33,9 @@ class Lock:
         self.session = session.Session(self.peripheral)
         self.secure_session = session.SecureSession(self.peripheral, self.key_index)
 
-        self.command_service = self.peripheral.getServiceByUUID(self.COMMAND_SERVICE_UUID)
-
-        characteristics = self.command_service.getCharacteristics()
+        # We are not really using any of the characteristics set by set_read
+        # since we poll right away.
+        characteristics = self.peripheral.getCharacteristics()
         for characteristic in characteristics:
             if characteristic.uuid == self.WRITE_CHARACTERISTIC:
                 self.session.set_write(characteristic)
@@ -44,12 +45,17 @@ class Lock:
                 self.secure_session.set_write(characteristic)
             elif characteristic.uuid == self.SECURE_READ_CHARACTERISTIC:
                 self.secure_session.set_read(characteristic)
+            elif characteristic.uuid == self.READ_CHAR1:
+                self.session.set_read(characteristic)
+            elif characteristic.uuid == self.READ_CHAR2:
+                self.session.set_read(characteristic)
 
         self.secure_session.set_key(self.key)
 
         handshake_keys = Cryptodome.Random.get_random_bytes(16)
 
         # Send SEC_LOCK_TO_MOBILE_KEY_EXCHANGE
+        print("SEC_LOCK")
         cmd = self.secure_session.build_command(0x01)
         util._copy(cmd, handshake_keys[0x00:0x08], destLocation=0x04)
         response = self.secure_session.execute(cmd)
@@ -66,6 +72,7 @@ class Lock:
         self.secure_session.set_key(session_key)
 
         # Send SEC_INITIALIZATION_COMMAND
+        print("SEC_INIT")
         cmd = self.secure_session.build_command(0x03)
         util._copy(cmd, handshake_keys[0x08:0x10], destLocation=0x04)
         response = self.secure_session.execute(cmd)
@@ -96,6 +103,7 @@ class Lock:
         return True
 
     def status(self):
+        print("STATUS")
         cmd = bytearray(0x12)
         cmd[0x00] = 0xee
         cmd[0x01] = 0x02

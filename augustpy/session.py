@@ -31,8 +31,22 @@ class Session:
     def set_write(self, write_characteristic):
         self.write_characteristic = write_characteristic
 
-    def set_read(self, read_characteristic):
-        self.read_characteristic = read_characteristic
+    def set_read(self, r):
+        self.read_characteristic = r
+        # set up client Char Configuration 
+        # 32 is INDICATE property.  This was traced in nRF Connect.
+        if r.properties & 32 != 0:
+            for d in r.getDescriptors():
+                # 0x0200 is enable indication
+                # https://android.googlesource.com/platform/frameworks/base/+/master/core/java/android/bluetooth/BluetoothGattDescriptor.java
+                res = d.write(b'\x02\x00', withResponse=True)
+                print(f"Nofication enabled {d.uuid} {r.uuid}")
+        # 20 is 0b10100 NOTIFY and READ properties
+        if r.properties & 20 != 0:
+            for d in r.getDescriptors():
+                # 0x0100 is enable notification.  See link above.
+                res = d.write(b'\x01\x00', withResponse=True)
+                print(f"Nofication enabled {d.uuid} {r.uuid}")
 
     def set_key(self, key: bytes):
         self.cipher_encrypt = AES.new(key, AES.MODE_CBC, iv=bytes(0x10))
@@ -86,7 +100,7 @@ class Session:
         self.peripheral.withDelegate(delegate)
         self.write_characteristic.write(command, True)
         if delegate.data is None and \
-                self.peripheral.waitForNotifications(10) is False:
+                self.peripheral.waitForNotifications(20) is False:
             raise Exception("Notification timed out")
 
         return delegate.data
